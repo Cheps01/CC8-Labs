@@ -27,7 +27,7 @@ public class Servidor {
     public String procesarOperacion(String entrada) {
         Matcher matcher = PATRON_OPERACION.matcher(entrada);
         if (!matcher.matches()) {
-            return "not possible to compute";
+            return "formato de operación no válido";
         }
 
         double numero1 = Double.parseDouble(matcher.group(1));
@@ -47,18 +47,18 @@ public class Servidor {
                 break;
             case "/":
                 if (numero2 == 0) {
-                    return "not possible to compute";
+                    return "no es posible computar operacion";
                 }
                 resultado = numero1 / numero2;
                 break;
             case "%":
                 if (numero2 == 0) {
-                    return "not possible to compute";
+                    return "no es posible computar operacion";
                 }
                 resultado = numero1 % numero2;
                 break;
             default:
-                return "not possible to compute";
+                return "operador no válido";
         }
 
         if (resultado == Math.floor(resultado) && !Double.isInfinite(resultado)) {
@@ -159,12 +159,16 @@ public class Servidor {
 
         Servidor servidor = new Servidor(protocolo, puerto);
 
-        if (protocolo.equalsIgnoreCase("TCP")) {
-            servidor.iniciarTCP();
-        } else if (protocolo.equalsIgnoreCase("UDP")) {
-            servidor.iniciarUDP();
-        } else {
-            System.out.println("Protocolo no reconocido: " + protocolo);
+        try {
+            if (protocolo.equalsIgnoreCase("TCP")) {
+                servidor.iniciarTCP();
+            } else if (protocolo.equalsIgnoreCase("UDP")) {
+                servidor.iniciarUDP();
+            } else {
+                System.out.println("Protocolo no reconocido: " + protocolo);
+            }
+        } catch (IOException e) {
+            System.out.println("El servidor no pudo iniciar: " + e.getMessage());
         }
     }
 }

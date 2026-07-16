@@ -40,7 +40,7 @@ public class Cliente {
 
             String mensaje;
             while (true) {
-                System.out.print("Ingrese operación: ");
+                System.out.print("Ingrese operación a realizar: ");
                 mensaje = teclado.readLine();
                 if (mensaje == null) {
                     mensaje = "EXIT";
@@ -127,12 +127,16 @@ public class Cliente {
 
         Cliente cliente = new Cliente(ipServidor, protocolo, puerto);
 
-        if (protocolo.equalsIgnoreCase("TCP")) {
-            cliente.conectarTCP();
-        } else if (protocolo.equalsIgnoreCase("UDP")) {
-            cliente.conectarUDP();
-        } else {
-            System.out.println("Protocolo no reconocido: " + protocolo);
+        try {
+            if (protocolo.equalsIgnoreCase("TCP")) {
+                cliente.conectarTCP();
+            } else if (protocolo.equalsIgnoreCase("UDP")) {
+                cliente.conectarUDP();
+            } else {
+                System.out.println("Protocolo no reconocido: " + protocolo);
+            }
+        } catch (IOException e) {
+            System.out.println("No se pudo conectar el cliente al servidor: " + e.getMessage());
         }
     }
 }
