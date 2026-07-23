@@ -3,9 +3,10 @@ JC = javac
 JVM= java
 .SUFFIXES: .java .class
 .java.class:
-		$(JC) $(JFLAGS) $*.java
+	$(JC) $(JFLAGS) $*.java
 
 CLASSES = \
+		HttpRequest.java \
 		Request.java \
 		Response.java \
 		FormatterWebServer.java \
@@ -20,8 +21,8 @@ default: classes
 classes: $(CLASSES:.java=.class)
 
 run: $(MAIN).class
-		$(JVM) $(MAIN) $(ARGS)
+	$(JVM) $(MAIN) $(ARGS)
 
 clean:
-		$(RM) *.class
-		$(RM) logs/*
+	$(RM) *.class
+	$(RM) logs/*
