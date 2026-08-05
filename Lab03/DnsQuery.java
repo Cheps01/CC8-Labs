@@ -23,7 +23,11 @@ public class DnsQuery {
             case 28:
                 return "AAAA";
             case 5:
+                return "CNAME";
+            case 12:
                 return "PTR";
+            case 16:
+                return "TXT";
             default:
                 return "TYPE(" + questionType + ")";
         }

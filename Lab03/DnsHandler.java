@@ -1,21 +1,82 @@
 import java.io.ByteArrayOutputStream;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 public class DnsHandler {
 
     public static final int TYPE_A = 1;
+    public static final int TYPE_CNAME = 5;
+    public static final int TYPE_PTR = 12;
+    public static final int TYPE_TXT = 16;
     public static final int TYPE_AAAA = 28;
-    public static final int TYPE_PTR = 5;
     public static final int CLASS_IN = 1;
 
-    private final Map<String, byte[]> records = new HashMap<>();
+    private static final class Record {
+        final int type;
+        final int clazz;
+        final int ttl;
+        final byte[] rdata;
+
+        Record(int type, int clazz, int ttl, byte[] rdata) {
+            this.type = type;
+            this.clazz = clazz;
+            this.ttl = ttl;
+            this.rdata = rdata;
+        }
+    }
+
+    private final Map<String, List<Record>> records = new HashMap<>();
 
     public DnsHandler() {
-        records.put("localhost", new byte[]{(byte) 127, 0, 0, 1});
-        records.put("www.example.com", new byte[]{(byte) 93, (byte) 184, (byte) 216, 34});
-        records.put("example.com", new byte[]{(byte) 93, (byte) 184, (byte) 216, 34});
-        records.put("1.0.0.127.in-addr.arpa", new byte[]{'l', 'o', 'c', 'a', 'l', 'h', 'o', 's', 't'});
+        // A records
+        addA("localhost", new byte[]{(byte) 127, 0, 0, 1}, 60);
+        addA("www.example.com", new byte[]{(byte) 93, (byte) 184, (byte) 216, 34}, 60);
+        addA("example.com", new byte[]{(byte) 93, (byte) 184, (byte) 216, 34}, 60);
+
+        // AAAA record
+        addAAAA("localhost", new byte[]{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1}, 60);
+
+        // CNAME example
+        addCNAME("alias.example.com", "www.example.com", 60);
+
+        // TXT example
+        addTXT("txt.example.com", "hello", 60);
+
+        // PTR example (reverse)
+        addPTR("1.0.0.127.in-addr.arpa", "localhost", 60);
+    }
+
+    private void addRecord(String name, Record rec) {
+        records.computeIfAbsent(name.toLowerCase(), k -> new ArrayList<>()).add(rec);
+    }
+
+    private void addA(String name, byte[] addr4, int ttl) {
+        addRecord(name, new Record(TYPE_A, CLASS_IN, ttl, addr4));
+    }
+
+    private void addAAAA(String name, byte[] addr6, int ttl) {
+        addRecord(name, new Record(TYPE_AAAA, CLASS_IN, ttl, addr6));
+    }
+
+    private void addCNAME(String name, String target, int ttl) {
+        byte[] rdata = encodeDomainName(target);
+        addRecord(name, new Record(TYPE_CNAME, CLASS_IN, ttl, rdata));
+    }
+
+    private void addTXT(String name, String text, int ttl) {
+        byte[] txt = text.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        byte[] rdata = new byte[1 + txt.length];
+        rdata[0] = (byte) txt.length;
+        System.arraycopy(txt, 0, rdata, 1, txt.length);
+        addRecord(name, new Record(TYPE_TXT, CLASS_IN, ttl, rdata));
+    }
+
+    private void addPTR(String name, String target, int ttl) {
+        byte[] rdata = encodeDomainName(target);
+        addRecord(name, new Record(TYPE_PTR, CLASS_IN, ttl, rdata));
     }
 
     public DnsQuery parseRequest(byte[] request) {
@@ -72,8 +133,8 @@ public class DnsHandler {
 
         writeUnsignedShort(output, query.transactionId);
         writeUnsignedShort(output, 0x8180); // Standard response + recursion available
-        writeUnsignedShort(output, 1);
-        writeUnsignedShort(output, 1);
+        writeUnsignedShort(output, 1); // QDCOUNT
+        writeUnsignedShort(output, 0); // ANCOUNT (placeholder)
         writeUnsignedShort(output, 0);
         writeUnsignedShort(output, 0);
 
@@ -81,9 +142,16 @@ public class DnsHandler {
         writeUnsignedShort(output, query.questionType);
         writeUnsignedShort(output, query.questionClass);
 
-        writeAnswer(output, query);
+        int answersWritten = writeAnswers(output, query);
 
-        return output.toByteArray();
+        byte[] resp = output.toByteArray();
+        // set ANCOUNT at bytes 6-7
+        if (resp.length >= 8) {
+            resp[6] = (byte) ((answersWritten >>> 8) & 0xFF);
+            resp[7] = (byte) (answersWritten & 0xFF);
+        }
+
+        return resp;
     }
 
     private byte[] createErrorResponse(byte[] request, String message) {
@@ -98,28 +166,38 @@ public class DnsHandler {
         return output.toByteArray();
     }
 
-    private void writeAnswer(ByteArrayOutputStream output, DnsQuery query) {
-        byte[] rdata = resolveRdata(query.questionName, query.questionType);
-        if (rdata == null) {
-            return;
+    private int writeAnswers(ByteArrayOutputStream output, DnsQuery query) {
+        List<Record> list = getRecords(query.questionName, query.questionType);
+        if (list.isEmpty()) {
+            return 0;
         }
 
-        writeDomainName(output, query.questionName);
-        writeUnsignedShort(output, query.questionType);
-        writeUnsignedShort(output, query.questionClass);
-        writeUnsignedInt(output, 60);
-
-        if (query.questionType == TYPE_A) {
-            writeUnsignedShort(output, 4);
-            output.write(rdata, 0, rdata.length);
-        } else if (query.questionType == TYPE_AAAA) {
-            writeUnsignedShort(output, 16);
-            output.write(rdata, 0, rdata.length);
-        } else if (query.questionType == TYPE_PTR) {
-            byte[] ptrName = encodeDomainName(new String(rdata, java.nio.charset.StandardCharsets.UTF_8));
-            writeUnsignedShort(output, ptrName.length);
-            output.write(ptrName, 0, ptrName.length);
+        int written = 0;
+        for (Record r : list) {
+            writeDomainName(output, query.questionName);
+            writeUnsignedShort(output, r.type);
+            writeUnsignedShort(output, r.clazz);
+            writeUnsignedInt(output, r.ttl);
+            writeUnsignedShort(output, r.rdata.length);
+            output.write(r.rdata, 0, r.rdata.length);
+            written++;
         }
+        return written;
+    }
+
+    private List<Record> getRecords(String name, int qtype) {
+        if (name == null) return List.of();
+        List<Record> set = records.get(name.toLowerCase());
+        if (set == null || set.isEmpty()) return List.of();
+        List<Record> out = new ArrayList<>();
+        for (Record r : set) {
+            if (qtype == 255) { // ANY
+                out.add(r);
+            } else if (r.type == qtype) {
+                out.add(r);
+            }
+        }
+        return out;
     }
 
     private byte[] resolveRdata(String questionName, int questionType) {
