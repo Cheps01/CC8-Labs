@@ -4,6 +4,11 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.net.DatagramPacket;
+import java.net.DatagramSocket;
+import java.net.InetSocketAddress;
+import java.net.InetAddress;
+import java.util.concurrent.ThreadLocalRandom;
 
 public class DnsHandler {
 
@@ -30,7 +35,31 @@ public class DnsHandler {
 
     private final Map<String, List<Record>> records = new HashMap<>();
 
+    // Forwarding and cache
+    private DnsCache cache = null;
+    private List<InetSocketAddress> upstreams = List.of();
+
     public DnsHandler() {
+        this(null, List.of());
+    }
+
+    public DnsHandler(DnsCache cache, List<String> upstreamHosts) {
+        this.cache = cache;
+        if (upstreamHosts != null && !upstreamHosts.isEmpty()) {
+            List<InetSocketAddress> list = new ArrayList<>();
+            for (String s : upstreamHosts) {
+                String[] parts = s.split(":");
+                try {
+                    String host = parts[0];
+                    int port = parts.length > 1 ? Integer.parseInt(parts[1]) : 53;
+                    list.add(new InetSocketAddress(InetAddress.getByName(host), port));
+                } catch (Exception e) {
+                    // ignore invalid upstream specification
+                }
+            }
+            if (!list.isEmpty()) this.upstreams = list;
+        }
+
         // A records
         addA("localhost", new byte[]{(byte) 127, 0, 0, 1}, 60);
         addA("www.example.com", new byte[]{(byte) 93, (byte) 184, (byte) 216, 34}, 60);
@@ -142,15 +171,52 @@ public class DnsHandler {
         writeUnsignedShort(output, query.questionType);
         writeUnsignedShort(output, query.questionClass);
 
-        int answersWritten = writeAnswers(output, query);
-
-        byte[] resp = output.toByteArray();
-        // set ANCOUNT at bytes 6-7
-        if (resp.length >= 8) {
-            resp[6] = (byte) ((answersWritten >>> 8) & 0xFF);
-            resp[7] = (byte) (answersWritten & 0xFF);
+        // First try cache
+        if (cache != null) {
+            String key = cacheKey(query.questionName, query.questionType);
+            byte[] cached = cache.get(key);
+            if (cached != null) {
+                // replace transaction id and return
+                return replaceTransactionId(cached, query.transactionId);
+            }
         }
 
+        // Check local records
+        List<Record> local = getRecords(query.questionName, query.questionType);
+        if (!local.isEmpty()) {
+            int minTtl = Integer.MAX_VALUE;
+            for (Record r : local) minTtl = Math.min(minTtl, r.ttl);
+            int answersWritten = writeAnswers(output, query);
+            byte[] resp = output.toByteArray();
+            if (resp.length >= 8) {
+                resp[6] = (byte) ((answersWritten >>> 8) & 0xFF);
+                resp[7] = (byte) (answersWritten & 0xFF);
+            }
+            if (cache != null && answersWritten > 0) {
+                cache.put(cacheKey(query.questionName, query.questionType), resp, minTtl == Integer.MAX_VALUE ? 60 : minTtl);
+            }
+            return resp;
+        }
+
+        // No local record: try forwarding to upstreams if configured
+        if (upstreams != null && !upstreams.isEmpty()) {
+            byte[] forwarded = forwardRequest(request);
+            if (forwarded != null) {
+                // cache response based on TTL found in response
+                int ttl = extractMinTTL(forwarded);
+                if (cache != null && ttl > 0) {
+                    cache.put(cacheKey(query.questionName, query.questionType), forwarded, ttl);
+                }
+                return replaceTransactionId(forwarded, query.transactionId);
+            }
+        }
+
+        // No answer
+        byte[] resp = output.toByteArray();
+        if (resp.length >= 8) {
+            resp[6] = 0;
+            resp[7] = 0;
+        }
         return resp;
     }
 
@@ -198,6 +264,71 @@ public class DnsHandler {
             }
         }
         return out;
+    }
+
+    private String cacheKey(String name, int qtype) {
+        return name.toLowerCase() + "|" + qtype;
+    }
+
+    private byte[] replaceTransactionId(byte[] resp, int txid) {
+        if (resp == null || resp.length < 2) return resp;
+        byte[] out = resp.clone();
+        out[0] = (byte) ((txid >>> 8) & 0xFF);
+        out[1] = (byte) (txid & 0xFF);
+        return out;
+    }
+
+    private byte[] forwardRequest(byte[] request) {
+        // try upstreams in random order, simple retries
+        int attempts = 2;
+        List<InetSocketAddress> ups = new ArrayList<>(upstreams);
+        // shuffle by rotating start index
+        int start = ThreadLocalRandom.current().nextInt(ups.size());
+        for (int i = 0; i < ups.size(); i++) {
+            InetSocketAddress upstream = ups.get((start + i) % ups.size());
+            for (int a = 0; a < attempts; a++) {
+                try (DatagramSocket s = new DatagramSocket()) {
+                    s.setSoTimeout(2000);
+                    DatagramPacket p = new DatagramPacket(request, request.length, upstream.getAddress(), upstream.getPort());
+                    s.send(p);
+                    byte[] buf = new byte[512];
+                    DatagramPacket resp = new DatagramPacket(buf, buf.length);
+                    s.receive(resp);
+                    return java.util.Arrays.copyOf(resp.getData(), resp.getLength());
+                } catch (Exception e) {
+                    // try next attempt/upstream
+                }
+            }
+        }
+        return null;
+    }
+
+    private int extractMinTTL(byte[] response) {
+        try {
+            if (response == null || response.length < 12) return 0;
+            int offset = 12;
+            int qdcount = readUnsignedShort(response, 4);
+            // skip questions
+            for (int q = 0; q < qdcount; q++) {
+                int[] next = new int[1];
+                readDomainName(response, offset, next);
+                offset = next[0];
+                offset += 4; // qtype + qclass
+            }
+            int ancount = readUnsignedShort(response, 6);
+            if (ancount <= 0) return 0;
+            // parse first answer's TTL
+            int[] next = new int[1];
+            readDomainName(response, offset, next);
+            offset = next[0];
+            // type (2) + class (2) + ttl (4)
+            int type = readUnsignedShort(response, offset);
+            int clazz = readUnsignedShort(response, offset + 2);
+            int ttl = ((response[offset + 4] & 0xFF) << 24) | ((response[offset + 5] & 0xFF) << 16) | ((response[offset + 6] & 0xFF) << 8) | (response[offset + 7] & 0xFF);
+            return ttl;
+        } catch (Exception e) {
+            return 0;
+        }
     }
 
     private byte[] resolveRdata(String questionName, int questionType) {

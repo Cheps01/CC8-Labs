@@ -18,7 +18,14 @@ public class TestDnsClient {
     public static void main(String[] args) throws Exception {
         String host = "127.0.0.1";
         int port = 5300;
-        String name = "example.com";
+        String name = args.length > 0 ? args[0] : "example.com";
+        if (args.length > 1) {
+            try {
+                port = Integer.parseInt(args[1]);
+            } catch (NumberFormatException e) {
+                // ignore and keep default
+            }
+        }
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         out.write(0x12); out.write(0x34); // transaction ID
