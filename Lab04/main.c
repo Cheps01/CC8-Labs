@@ -20,6 +20,6 @@ int main(int argc, char *argv[]) {
             }
         }
     }
-    ntp_init();
+    ntp_sync();
     return 0;
 }
