@@ -25,12 +25,12 @@ void start_udp_socket(const char* server_ip, const int server_port) {
     }
     printf("Initialized socket correctly\n");
 }
-void send_udp(const char *message) {
+void send_udp(const void *message, size_t len) {
     // Send UDP datagrams
     ssize_t sent = sendto(
         sockfd, 
         message, 
-        strlen(message), 
+        len, 
         0, 
         (struct sockaddr *)&server_addr, 
         sizeof(server_addr)
@@ -43,13 +43,13 @@ void send_udp(const char *message) {
     }
     printf("Sent %zd bytes\n", sent);
 }
-void receive_udp() {
+ssize_t receive_udp() {
     // Receive UDP datagrams
     socklen_t from_len = sizeof(from_addr);
     ssize_t received = recvfrom(
         sockfd, 
         buffer, 
-        sizeof(buffer) - 1, 
+        sizeof(buffer), 
         0,
         (struct sockaddr *)&from_addr, 
         &from_len
@@ -60,8 +60,6 @@ void receive_udp() {
         close(sockfd);
         exit(EXIT_FAILURE);
     }
-    buffer[received] = '\0';
-    printf("Received %zd bytes: %s\n", received, buffer);
-    // Close UDP socket
-    close(sockfd);
+    printf("Received %zd bytes\n", received);
+    return received;
 }
