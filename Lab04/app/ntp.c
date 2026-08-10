@@ -55,12 +55,18 @@ timestamp_t get_timestamp() {
     time.frac = milliseconds_scaled;
     return time;
 }
+
 uint32_t compute_delay(uint32_t t1, uint32_t t2, uint32_t t3, uint32_t t4) {
-    return (t4 - t1) - (t3 - t2);
+    uint32_t delay = (t4 - t1) - (t3 - t2);
+    printf("Delay: %u\n", delay);
+    return delay;
 }
 uint32_t compute_offset(uint32_t t1, uint32_t t2, uint32_t t3, uint32_t t4) {
-    return ((t2 - t1) + (t3 - t4)) / 2;
+    uint32_t offset = ((t2 - t1) + (t3 - t4)) / 2;
+    printf("Offset: %u\n", offset);
+    return offset;
 }
+
 ntp_packet_t build_ntp_packet(uint32_t t1_sec, uint32_t t1_frac) {
     ntp_packet_t packet;
     // set everything to zero
@@ -75,27 +81,56 @@ ntp_packet_t build_ntp_packet(uint32_t t1_sec, uint32_t t1_frac) {
     printf("NTP packet built. Ready to send %d bytes\n", (int)sizeof(packet));
     return packet;
 }
-void print_hex(const unsigned char *buf, size_t len) {
-    for (size_t i = 0; i < len; i++) {
-        printf("%02x ", buf[i]);
-        if ((i + 1) % 16 == 0) printf("\n");
+
+ntp_packet_t parse_ntp_response(const void *buffer, size_t len) {
+    // Check for incorrect length of response
+    if (len < sizeof(ntp_packet_t)) {
+        fprintf(stderr, "Error: response too short (%zu bytes, expected %zu)\n", len, sizeof(ntp_packet_t));
+        exit(EXIT_FAILURE);
     }
-    printf("\n");
+    // Copy data from buffer
+    ntp_packet_t reply;
+    memcpy(&reply, buffer, sizeof(ntp_packet_t));
+    // Convert every multi-byte field from network to host byte order
+    reply.root_delay      = ntohl(reply.root_delay);
+    reply.root_dispersion = ntohl(reply.root_dispersion);
+    reply.ref_id          = ntohl(reply.ref_id);
+    reply.ref_ts_sec      = ntohl(reply.ref_ts_sec);
+    reply.ref_ts_frac     = ntohl(reply.ref_ts_frac);
+    reply.orig_ts_sec     = ntohl(reply.orig_ts_sec);
+    reply.orig_ts_frac    = ntohl(reply.orig_ts_frac);
+    reply.recv_ts_sec     = ntohl(reply.recv_ts_sec);   // T2
+    reply.recv_ts_frac    = ntohl(reply.recv_ts_frac);
+    reply.tx_ts_sec       = ntohl(reply.tx_ts_sec);     // T3
+    reply.tx_ts_frac      = ntohl(reply.tx_ts_frac);
+    printf("Server response packet rebuilt succesfully.\n");
+    return reply;
 }
+
 // Run NTP sync algorithm
 void ntp_sync() {
-    // Start socket early to minimize offset and delay
+    // Start socket early
     start_udp_socket("132.163.96.6", 123);
 
     // Get time and build NTP packet
     timestamp_t t1 = get_timestamp();
-    ntp_packet_t ntpacket = build_ntp_packet(t1.sec, t1.frac);
+    ntp_packet_t request = build_ntp_packet(t1.sec, t1.frac);
 
     // Send UDP to defined server and port
-    send_udp(&ntpacket, sizeof(ntpacket));
-    char* resp = receive_udp();
-    print_hex((const unsigned char*)resp, sizeof(resp));
+    send_udp(&request, sizeof(request));
+    char resp[1024];
+    ssize_t received = receive_udp(resp, sizeof(resp));
+    print_hex((const unsigned char*)resp, received);
+
+    // Parse server response and get timestamps
+    ntp_packet_t response = parse_ntp_response(resp, received);
+    timestamp_t t2 = {response.recv_ts_sec, response.recv_ts_frac};
+    timestamp_t t3 = {response.tx_ts_sec, response.tx_ts_frac};
 
     // Record time as soon as UDP listener returns
     timestamp_t t4 = get_timestamp();
+
+    // Calculate delay and offset
+    uint32_t delay = compute_delay(t1.sec, t2.sec, t3.sec, t4.sec);
+    uint32_t offset = compute_offset(t1.sec, t2.sec, t3.sec, t4.sec);
 }
