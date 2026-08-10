@@ -43,7 +43,7 @@ void send_udp(const void *message, size_t len) {
     }
     printf("Sent %zd bytes\n", sent);
 }
-ssize_t receive_udp() {
+char* receive_udp() {
     // Receive UDP datagrams
     socklen_t from_len = sizeof(from_addr);
     ssize_t received = recvfrom(
@@ -61,5 +61,5 @@ ssize_t receive_udp() {
         exit(EXIT_FAILURE);
     }
     printf("Received %zd bytes\n", received);
-    return received;
+    return buffer;
 }

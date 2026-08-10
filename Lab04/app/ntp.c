@@ -10,23 +10,23 @@
 typedef struct {
     // Common fields
     uint8_t  li_vn_mode;                // Leap Indicator (2 bits) + Version (3 bits) + Mode (3 bits)
-    uint8_t  stratum;                   // stratum level of the local clock
-    uint8_t  poll;                      // maximum interval between successive messages
-    int8_t   precision;                 // precision of the local clock
+    uint8_t  stratum;                   
+    uint8_t  poll;                      
+    int8_t   precision;                 
 
     // Time fields
-    uint32_t root_delay;                // total round-trip delay to the reference clock
-    uint32_t root_dispersion;           // max error relative to the reference clock
-    uint32_t ref_id;                    // reference clock identifier
+    uint32_t root_delay;                
+    uint32_t root_dispersion;           
+    uint32_t ref_id;                    
 
-    uint32_t ref_ts_sec;                // reference timestamp, seconds
-    uint32_t ref_ts_frac;               // reference timestamp, fraction
+    uint32_t ref_ts_sec;                
+    uint32_t ref_ts_frac;               
 
     uint32_t orig_ts_sec;               // origin timestamp, seconds   (T1, filled in by server on reply)
     uint32_t orig_ts_frac;              // origin timestamp, fraction
 
-    uint32_t recv_ts_sec;               // receive timestamp, seconds  (T2)
-    uint32_t recv_ts_frac;              // receive timestamp, fraction
+    uint32_t recv_ts_sec;               
+    uint32_t recv_ts_frac;              
 
     uint32_t tx_ts_sec;                 // transmit timestamp, seconds (T1 on request, T3 on reply)
     uint32_t tx_ts_frac;                // transmit timestamp, fraction
@@ -34,12 +34,12 @@ typedef struct {
 #pragma pack(pop)
 
 typedef struct {
-    uint32_t t1_sec;
-    uint32_t t1_frac;
-} client_time_t;
+    uint32_t sec;
+    uint32_t frac;
+} timestamp_t;
 
-client_time_t get_timestamp() {
-    client_time_t time;
+timestamp_t get_timestamp() {
+    timestamp_t time;
     // Get seconds and milliseconds and convert to NTP format
     get_current_time();
     uint32_t timestamp_unix = get_unix_timestamp();
@@ -51,9 +51,15 @@ client_time_t get_timestamp() {
     uint32_t milliseconds_scaled = (uint32_t)((milliseconds / 1e3) * (2ULL << 31)); // scale = 2^32
     printf("Miliseconds (scaled): %u\n", milliseconds_scaled);
     // Build client time struct
-    time.t1_sec = timestamp_ntp;
-    time.t1_frac = milliseconds_scaled;
+    time.sec = timestamp_ntp;
+    time.frac = milliseconds_scaled;
     return time;
+}
+uint32_t compute_delay(uint32_t t1, uint32_t t2, uint32_t t3, uint32_t t4) {
+    return (t4 - t1) - (t3 - t2);
+}
+uint32_t compute_offset(uint32_t t1, uint32_t t2, uint32_t t3, uint32_t t4) {
+    return ((t2 - t1) + (t3 - t4)) / 2;
 }
 ntp_packet_t build_ntp_packet(uint32_t t1_sec, uint32_t t1_frac) {
     ntp_packet_t packet;
@@ -64,12 +70,32 @@ ntp_packet_t build_ntp_packet(uint32_t t1_sec, uint32_t t1_frac) {
     packet.orig_ts_sec = htonl(t1_sec);
     packet.orig_ts_frac = htonl(t1_frac);
     packet.tx_ts_sec = htonl(t1_sec);
-    packet.tx_ts_frac = htonl(t1_frac);
+    packet.tx_ts_frac = htonl(t1_frac); 
     // Sanity check
     printf("NTP packet built. Ready to send %d bytes\n", (int)sizeof(packet));
     return packet;
 }
+void print_hex(const unsigned char *buf, size_t len) {
+    for (size_t i = 0; i < len; i++) {
+        printf("%02x ", buf[i]);
+        if ((i + 1) % 16 == 0) printf("\n");
+    }
+    printf("\n");
+}
+// Run NTP sync algorithm
 void ntp_sync() {
-    client_time_t ctm = get_timestamp();
-    build_ntp_packet(ctm.t1_sec, ctm.t1_frac);
+    // Start socket early to minimize offset and delay
+    start_udp_socket("132.163.96.6", 123);
+
+    // Get time and build NTP packet
+    timestamp_t t1 = get_timestamp();
+    ntp_packet_t ntpacket = build_ntp_packet(t1.sec, t1.frac);
+
+    // Send UDP to defined server and port
+    send_udp(&ntpacket, sizeof(ntpacket));
+    char* resp = receive_udp();
+    print_hex((const unsigned char*)resp, sizeof(resp));
+
+    // Record time as soon as UDP listener returns
+    timestamp_t t4 = get_timestamp();
 }

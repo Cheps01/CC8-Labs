@@ -10,6 +10,6 @@
 
 void start_udp_socket(const char* server_ip, const int server_port);
 void send_udp(const void *message, size_t len);
-ssize_t receive_udp();
+char* receive_udp();
 
 #endif // UDP_H
