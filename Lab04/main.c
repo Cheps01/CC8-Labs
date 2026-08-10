@@ -1,10 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "sync.h"
-
-char date[8];
-char tm[5];
+#include "ntp.h"
 
 int main(int argc, char *argv[]) {
     printf("Running NTP client\n");
@@ -23,5 +20,6 @@ int main(int argc, char *argv[]) {
             }
         }
     }
+    ntp_init();
     return 0;
 }

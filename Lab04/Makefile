@@ -1,24 +1,24 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -Inetwork -Idomain -Iapp
+CFLAGS = -Wall -Wextra -Inetwork -Itime -Iapp
 TARGET = ntp_client
-OBJS = bin/main.o bin/udp.o bin/ntp.o bin/sync.o
+OBJS = bin/main.o bin/udp.o bin/ntp.o bin/tmp.o
 
 all: $(TARGET)
 
 $(TARGET): $(OBJS)
 	$(CC) $(OBJS) -o $(TARGET)
 
-bin/main.o: main.c app/sync.h
+bin/main.o: main.c app/ntp.h
 	$(CC) $(CFLAGS) -c main.c -o bin/main.o
 
-bin/sync.o: app/sync.c app/sync.h network/udp.h domain/ntp.h
-	$(CC) $(CFLAGS) -c app/sync.c -o bin/sync.o
+bin/ntp.o: app/ntp.c app/ntp.h network/udp.h time/tmp.h
+	$(CC) $(CFLAGS) -c app/ntp.c -o bin/ntp.o
 
 bin/udp.o: network/udp.c network/udp.h
 	$(CC) $(CFLAGS) -c network/udp.c -o bin/udp.o
 
-bin/ntp.o: domain/ntp.c domain/ntp.h
-	$(CC) $(CFLAGS) -c domain/ntp.c -o bin/ntp.o
+bin/tmp.o: time/tmp.c time/tmp.h
+	$(CC) $(CFLAGS) -c time/tmp.c -o bin/tmp.o
 
 clean:
 	rm -f $(OBJS) $(TARGET)
