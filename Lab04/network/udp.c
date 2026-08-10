@@ -1,8 +1,5 @@
 #include "udp.h"
 
-#define BUFFER_SIZE      1024
-
-char buffer[BUFFER_SIZE];
 int sockfd;
 struct sockaddr_in server_addr;
 struct sockaddr_in from_addr;
@@ -23,7 +20,7 @@ void start_udp_socket(const char* server_ip, const int server_port) {
         close(sockfd);
         exit(EXIT_FAILURE);
     }
-    printf("Initialized socket correctly\n");
+    printf("Initialized UDP socket correctly\n");
 }
 void send_udp(const void *message, size_t len) {
     // Send UDP datagrams
@@ -43,13 +40,13 @@ void send_udp(const void *message, size_t len) {
     }
     printf("Sent %zd bytes\n", sent);
 }
-char* receive_udp() {
+ssize_t receive_udp(void *buffer, size_t len) {
     // Receive UDP datagrams
     socklen_t from_len = sizeof(from_addr);
     ssize_t received = recvfrom(
         sockfd, 
         buffer, 
-        sizeof(buffer), 
+        len, 
         0,
         (struct sockaddr *)&from_addr, 
         &from_len
@@ -61,5 +58,11 @@ char* receive_udp() {
         exit(EXIT_FAILURE);
     }
     printf("Received %zd bytes\n", received);
-    return buffer;
+    return received;
+}
+void print_hex(const unsigned char *buf, size_t len) {
+    for (size_t i = 0; i < len; i++) {
+        printf("%02x ", buf[i]);
+        if ((i + 1) % 16 == 0) printf("\n");
+    }
 }
