@@ -3,6 +3,7 @@
 
 #include <time.h>
 #include <stdint.h>
+#include <stdio.h>
 
 void get_current_time();
 uint32_t get_unix_timestamp();
