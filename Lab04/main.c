@@ -20,7 +20,6 @@ int main(int argc, char *argv[]) {
             }
         }
     }
-    time_set(2026, 8, 2, 11, 45, 32);
-    ntp_sync();
+    query_all_servers();
     return 0;
 }
