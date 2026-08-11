@@ -48,13 +48,13 @@ typedef struct {
 
 // NTP server list. Queries are made to the IP directly.
 server_result_t servers[] = {
-    {"time.google.com", "216.239.35.4"},
-    {"time.apple.com", "17.253.6.45"},
-    {"time.windows.com", "168.61.215.74"},
-    {"time.cloudflare.com", "162.159.200.1"},
-    {"time.nist.gov", "129.6.15.25"},
-    {"time-a.nist.gov", "129.6.15.28"},
-    {"pool.ntp.org", "23.186.168.124"},
+    {"time.google.com", "216.239.35.4", 0, 0, 0},
+    {"time.apple.com", "17.253.6.45", 0, 0, 0},
+    {"time.windows.com", "168.61.215.74", 0, 0, 0},
+    {"time.cloudflare.com", "162.159.200.1", 0, 0, 0},
+    {"time.nist.gov", "129.6.15.25", 0, 0, 0},
+    {"time-a.nist.gov", "129.6.15.28", 0, 0, 0},
+    {"pool.ntp.org", "23.186.168.124", 0, 0, 0},
 };
 int num_servers = sizeof(servers) / sizeof(servers[0]);
 
@@ -66,6 +66,7 @@ timestamp_t get_timestamp() {
     uint32_t timestamp_ntp = timestamp_unix + (uint32_t)UNIX_TO_NTP_OFFSET;
     uint32_t milliseconds = get_miliseconds();
     uint32_t milliseconds_scaled = (uint32_t)((milliseconds / 1e3) * (2ULL << 31)); // scale = 2^32
+    printf("seconds: %d milliseconds: %d\n", timestamp_unix, milliseconds_scaled);
     // Build client time struct
     time.sec = timestamp_ntp;
     time.frac = milliseconds_scaled;
@@ -126,7 +127,7 @@ ntp_packet_t parse_ntp_response(const void *buffer, size_t len) {
     return reply;
 }
 
-// Run NTP sync algorithm
+// Query a single NTP server for sync data
 server_result_t query_server(const char* name, const char* ip) {
     server_result_t result;
     result.name = name;
@@ -149,7 +150,7 @@ server_result_t query_server(const char* name, const char* ip) {
     // Record time as soon as UDP listener returns
     timestamp_t t4 = get_timestamp();
 
-    // Check for incorrect length of response
+    // Check for incorrect response
     if (received < (ssize_t)sizeof(ntp_packet_t)) {
         result.valid = 0;
         return result;
@@ -163,10 +164,8 @@ server_result_t query_server(const char* name, const char* ip) {
 
     // Calculate delay and offset
     uint64_t delay = compute_delay(t1, t2, t3, t4);
-    printf("Delay: %ld ms\n", delay);
     result.delay = delay;
     uint64_t offset = compute_offset(t1, t2, t3, t4);
-    printf("Offset: %ld ms\n", offset);
     result.offset = offset;
     result.valid = 1;
 
@@ -179,22 +178,26 @@ server_result_t query_server(const char* name, const char* ip) {
 // Sync algorithm
 void query_all_servers() {
     server_result_t *best;
+
     // Iterate thorugh all servers
     for (int i = 0; i < num_servers; i++) {
+        printf("-----------------------------\n");
+        printf("Querying %s\n", servers[i].name);
         server_result_t res = query_server(servers[i].name, servers[i].ip);
         servers[i] = res;
 
         if (res.valid) {
-            printf("%-24s offset=%ld delay=%ld\n", res.name, res.offset, res.delay);
+            printf("%s offset=%ld delay=%ld\n", res.name, res.offset, res.delay);
             if (best == NULL || res.delay < best->delay) {
                 best = &servers[i];
             }
         } else {
-            printf("%-24s no response\n", res.name);
+            printf("%s no response\n", res.name);
         }
-
-        sleep(1);  // be polite between queries
+        sleep(1);
     }
+
+    // Apply best servers' offset
     if (best) {
         printf("Selected server: %s (delay=%ld)\n", best->name, best->delay);
         apply_time_offset(best->offset);

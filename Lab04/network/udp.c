@@ -11,6 +11,15 @@ void start_udp_socket(const char* server_ip, const int server_port) {
         perror("Error: failed to create socket");
         exit(EXIT_FAILURE);
     }
+    // Set a receive timeout so recvfrom() doesn't block forever
+    struct timeval timeout;
+    timeout.tv_sec = 2;   // 2 seconds
+    timeout.tv_usec = 0;
+    if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0) {
+        perror("Error: failed to set socket timeout");
+        close(sockfd);
+        exit(EXIT_FAILURE);
+    }
     // Build destination address
     memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
@@ -53,11 +62,16 @@ ssize_t receive_udp(void *buffer, size_t len) {
     );
     // Check for receiving errors
     if (received < 0) {
-        perror("Error: failed to receive message");
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            printf("Warning: receive timed out, no response from server\n");
+        } else {
+            perror("Error: failed to receive message");
+        }
         close(sockfd);
-        exit(EXIT_FAILURE);
+        return -1;
     }
     printf("Received %zd bytes\n", received);
+    close(sockfd);
     return received;
 }
 void print_hex(const unsigned char *buf, size_t len) {

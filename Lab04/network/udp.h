@@ -7,6 +7,7 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
+#include <errno.h>
 
 void start_udp_socket(const char* server_ip, const int server_port);
 void send_udp(const void *message, size_t len);
