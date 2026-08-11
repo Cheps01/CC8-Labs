@@ -56,15 +56,19 @@ timestamp_t get_timestamp() {
     return time;
 }
 
-uint32_t compute_delay(uint32_t t1, uint32_t t2, uint32_t t3, uint32_t t4) {
-    uint32_t delay = (t4 - t1) - (t3 - t2);
-    printf("Delay: %u\n", delay);
-    return delay;
+uint64_t compute_delay(timestamp_t t1, timestamp_t t2, timestamp_t t3, timestamp_t t4) {
+    uint64_t t1_ms = ((uint64_t)t1.sec * 1000) + ((uint64_t)t1.frac * 1000 / (2ULL << 31));
+    uint64_t t2_ms = ((uint64_t)t2.sec * 1000) + ((uint64_t)t2.frac * 1000 / (2ULL << 31));
+    uint64_t t3_ms = ((uint64_t)t3.sec * 1000) + ((uint64_t)t3.frac * 1000 / (2ULL << 31));
+    uint64_t t4_ms = ((uint64_t)t4.sec * 1000) + ((uint64_t)t4.frac * 1000 / (2ULL << 31));
+    return (t4_ms - t1_ms) - (t3_ms - t2_ms);
 }
-uint32_t compute_offset(uint32_t t1, uint32_t t2, uint32_t t3, uint32_t t4) {
-    uint32_t offset = ((t2 - t1) + (t3 - t4)) / 2;
-    printf("Offset: %u\n", offset);
-    return offset;
+uint64_t compute_offset(timestamp_t t1, timestamp_t t2, timestamp_t t3, timestamp_t t4) {
+    uint64_t t1_ms = ((uint64_t)t1.sec * 1000) + ((uint64_t)t1.frac * 1000 / (2ULL << 31));
+    uint64_t t2_ms = ((uint64_t)t2.sec * 1000) + ((uint64_t)t2.frac * 1000 / (2ULL << 31));
+    uint64_t t3_ms = ((uint64_t)t3.sec * 1000) + ((uint64_t)t3.frac * 1000 / (2ULL << 31));
+    uint64_t t4_ms = ((uint64_t)t4.sec * 1000) + ((uint64_t)t4.frac * 1000 / (2ULL << 31));
+    return ((t2_ms - t1_ms) + (t3_ms - t4_ms)) / 2;
 }
 
 ntp_packet_t build_ntp_packet(uint32_t t1_sec, uint32_t t1_frac) {
@@ -112,6 +116,12 @@ void ntp_sync() {
     // Start socket early
     start_udp_socket("132.163.96.6", 123);
 
+    // Print current time
+    char datetime[20];
+    get_current_time();
+    get_datetime(datetime, sizeof(datetime));
+    printf("Time is: %s\n", datetime);
+
     // Get time and build NTP packet
     timestamp_t t1 = get_timestamp();
     ntp_packet_t request = build_ntp_packet(t1.sec, t1.frac);
@@ -131,6 +141,8 @@ void ntp_sync() {
     timestamp_t t4 = get_timestamp();
 
     // Calculate delay and offset
-    uint32_t delay = compute_delay(t1.sec, t2.sec, t3.sec, t4.sec);
-    uint32_t offset = compute_offset(t1.sec, t2.sec, t3.sec, t4.sec);
+    uint64_t delay = compute_delay(t1, t2, t3, t4);
+    printf("Delay: %ld ms\n", delay);
+    uint64_t offset = compute_offset(t1, t2, t3, t4);
+    printf("Offset: %ld ms\n", offset);
 }

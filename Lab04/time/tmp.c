@@ -16,3 +16,8 @@ uint32_t get_unix_timestamp() {
 uint32_t get_miliseconds() {
     return (uint32_t)(ts.tv_nsec / 1e6);
 }
+// Get text timestamp
+void get_datetime(char *buffer, size_t size) {
+    struct tm *tm_info = localtime(&ts.tv_sec);
+    strftime(buffer, size, "%Y-%m-%d %H:%M:%S", tm_info);
+}
