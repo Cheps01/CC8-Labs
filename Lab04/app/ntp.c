@@ -42,7 +42,7 @@ timestamp_t get_timestamp() {
     timestamp_t time;
     // Get seconds and milliseconds and convert to NTP format
     get_current_time();
-    uint32_t timestamp_unix = get_unix_timestamp();
+    uint32_t timestamp_unix = get_seconds();
     printf("Unix timestamp (seconds): %u\n", timestamp_unix);
     uint32_t timestamp_ntp = timestamp_unix + (uint32_t)UNIX_TO_NTP_OFFSET;
     printf("NTP timestamp (seconds): %u\n", timestamp_ntp);
@@ -116,12 +116,6 @@ void ntp_sync() {
     // Start socket early
     start_udp_socket("132.163.96.6", 123);
 
-    // Print current time
-    char datetime[20];
-    get_current_time();
-    get_datetime(datetime, sizeof(datetime));
-    printf("Time is: %s\n", datetime);
-
     // Get time and build NTP packet
     timestamp_t t1 = get_timestamp();
     ntp_packet_t request = build_ntp_packet(t1.sec, t1.frac);
@@ -145,4 +139,18 @@ void ntp_sync() {
     printf("Delay: %ld ms\n", delay);
     uint64_t offset = compute_offset(t1, t2, t3, t4);
     printf("Offset: %ld ms\n", offset);
+}
+// Set the time to user specification
+void time_set(int year, int month, int day, int hour, int minute, int second) {
+    struct tm user_time = {0};
+
+    user_time.tm_year = year - 1900;
+    user_time.tm_mon  = month - 1;
+    user_time.tm_mday = day;
+    user_time.tm_hour = hour;
+    user_time.tm_min = minute;
+    user_time.tm_sec = second;
+
+    set_internal_time(&user_time);
+    printf("Internal clock set to %s", asctime(&user_time));
 }
