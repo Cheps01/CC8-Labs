@@ -47,7 +47,6 @@ void send_udp(const void *message, size_t len) {
         close(sockfd);
         exit(EXIT_FAILURE);
     }
-    printf("Sent %zd bytes\n", sent);
 }
 ssize_t receive_udp(void *buffer, size_t len) {
     // Receive UDP datagrams
@@ -70,7 +69,6 @@ ssize_t receive_udp(void *buffer, size_t len) {
         close(sockfd);
         return -1;
     }
-    printf("Received %zd bytes\n", received);
     close(sockfd);
     return received;
 }

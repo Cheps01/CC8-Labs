@@ -6,8 +6,9 @@
 
 #include "udp.h"
 #include "tmp.h"
+#include "log.h"
 
-void query_all_servers();
+void ntp_sync();
 void time_set(int year, int month, int day, int hour, int minute, int second);
 
 #endif // NTP_H
