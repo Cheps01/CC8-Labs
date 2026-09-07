@@ -20,7 +20,7 @@ int tcp_session_open(tcp_session_t *s, const char *local_ip, const char *server_
 
 int tcp_session_handshake(tcp_session_t *s, int timeout_sec);
 int tcp_session_send_message(tcp_session_t *s, const char *message);
-int tcp_session_drain_until_close(tcp_session_t *s, char *out_buf, size_t out_buf_size, int timeout_sec);
+int tcp_session_recv_message(tcp_session_t *s, char *out_buf, size_t out_buf_size, int timeout_sec);
 void tcp_session_close(tcp_session_t *s, int wait_ack_timeout_sec);
 void tcp_session_abort(tcp_session_t *s);
 

@@ -159,7 +159,7 @@ int tcp_session_send_message(tcp_session_t *s, const char *message)
     return 0;
 }
 
-int tcp_session_drain_until_close(tcp_session_t *s, char *out_buf,
+int tcp_session_recv_message(tcp_session_t *s, char *out_buf,
                                   size_t out_buf_size, int timeout_sec)
 {
     uint8_t payload[TCP_SESSION_MAX_MSG + 1];
@@ -167,7 +167,7 @@ int tcp_session_drain_until_close(tcp_session_t *s, char *out_buf,
     int payload_len;
     time_t start = time(NULL);
 
-    printf("[*] Waiting for server response and close...\n");
+    printf("[*] Waiting for server response...\n");
 
     while (difftime(time(NULL), start) < timeout_sec) {
         if (wait_for_packet(s, TCP_ACK, TCP_ACK, &recv_tcph, payload,
@@ -203,6 +203,9 @@ int tcp_session_drain_until_close(tcp_session_t *s, char *out_buf,
             printf("[*] Server FIN received and acknowledged\n");
             return 1;
         }
+
+        // Verificar final del mensaje (para lectura sin FIN o timeout)
+        if (((char *)payload)[strlen((char *)payload) - 1] == '\n') return 0;
     }
 
     printf("[!] Server close timeout\n");

@@ -84,14 +84,31 @@ int run_session(const cli_options_t *o)
     if (tcp_session_open(&session, o->local_ip, o->server_ip, o->server_port, o->interface) != 0)
         return 1;
 
-    if (tcp_session_handshake(&session, 10) != 0 || tcp_session_send_message(&session, o->message) != 0) {
+    if (tcp_session_handshake(&session, 10) != 0) {
         tcp_session_abort(&session);
         return 1;
     }
+    
+    // Ciclo de entrada de usuario
+    char message[TCP_SESSION_MAX_MSG + 1];
+    while (1) {
 
-    tcp_session_drain_until_close(&session, response, sizeof(response), 10);
+        printf("Insertar mensaje \\> ");
+        scanf("%63[^\n]", (char *)message); 
+
+        if (tcp_session_send_message(&session, message) != 0) {
+            tcp_session_abort(&session);
+            return 1;
+        }
+        tcp_session_recv_message(&session, response, sizeof(response), 2);
+
+        if (!strcmp(message, "EXIT") || !strcmp(message, "EXIT OFF")) break;
+
+        int c;
+        while ((c = getchar()) != '\n' && c != EOF);
+    }
+
     tcp_session_close(&session, 5);
-
     return 0;
 }
 
