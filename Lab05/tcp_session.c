@@ -11,6 +11,7 @@
 #include "tcp_header.h"
 #include "checksum.h"
 #include "raw_socket.h"
+#include "tcp_logs.h"
 
 #define MAX_PACKET_SIZE 4096
 
@@ -86,6 +87,9 @@ static int send_control(tcp_session_t *s, uint8_t flags)
     uint8_t packet[MAX_PACKET_SIZE];
     int len = build_packet(packet, s, flags, NULL, 0);
 
+    // CLIENT -> SERVER
+    log_packet(1, flags, s->seq, s->ack, ""); 
+
     return send_packet(s->sockfd, packet, len, s->server_ip);
 }
 
@@ -109,16 +113,16 @@ int tcp_session_open(tcp_session_t *s, const char *local_ip, const char *server_
 
 int tcp_session_handshake(tcp_session_t *s, int timeout_sec)
 {
+
     uint8_t packet[MAX_PACKET_SIZE];
     tcp_header_t recv_tcph;
     int recv_payload_len;
 
-    printf("[*] Sending SYN...\n");
-
     int len = build_packet(packet, s, TCP_SYN, NULL, 0);
     if (send_packet(s->sockfd, packet, len, s->server_ip) < 0) return -1;
 
-    printf("[*] Waiting for SYN+ACK...\n");
+    // CLIENT -> SERVER [SYN]
+    log_packet(1, TCP_SYN, s->seq, 0, "");
 
     if (wait_for_packet(s, TCP_SYN | TCP_ACK, TCP_SYN | TCP_ACK,
                         &recv_tcph, NULL, 0, &recv_payload_len, timeout_sec) != 0) {
@@ -127,12 +131,13 @@ int tcp_session_handshake(tcp_session_t *s, int timeout_sec)
     }
 
     uint32_t server_seq = ntohl(recv_tcph.seq_num);
+    uint32_t server_ack = ntohl(recv_tcph.ack_num);
 
     s->seq++;
     s->ack = server_seq + 1;
 
-    printf("[*] SYN+ACK received (server seq=%u)\n", server_seq);
-    printf("[*] Sending final ACK...\n");
+    // SERVER -> CLIENT [SYN, ACK]
+    log_packet(0, recv_tcph.flags, server_seq, server_ack, "");
 
     return send_control(s, TCP_ACK) < 0 ? -1 : 0;
 }
@@ -148,12 +153,13 @@ int tcp_session_send_message(tcp_session_t *s, const char *message)
 
     if (len == 0 || buffer[len - 1] != '\n') buffer[len++] = '\n';
 
-    printf("[*] Sending message: %s\n", message);
-
     uint8_t packet[MAX_PACKET_SIZE];
     int packet_len = build_packet(packet, s, TCP_PSH | TCP_ACK, buffer, len);
 
     if (send_packet(s->sockfd, packet, packet_len, s->server_ip) < 0) return -1;
+
+    // CLIENT -> SERVER [PSH, ACK] <message>
+    log_packet(1, packet[33], s->seq, s->ack, message);
 
     s->seq += (uint32_t)len;
     return 0;
@@ -167,26 +173,30 @@ int tcp_session_recv_message(tcp_session_t *s, char *out_buf,
     int payload_len;
     time_t start = time(NULL);
 
-    printf("[*] Waiting for server response...\n");
-
     while (difftime(time(NULL), start) < timeout_sec) {
         if (wait_for_packet(s, TCP_ACK, TCP_ACK, &recv_tcph, payload,
                             TCP_SESSION_MAX_MSG, &payload_len, 2) != 0)
             continue;
-
+            
         uint32_t seq = ntohl(recv_tcph.seq_num);
-        int has_fin = recv_tcph.flags & TCP_FIN;
+        uint32_t ack = ntohl(recv_tcph.ack_num);
 
+        int has_fin = recv_tcph.flags & TCP_FIN;
+        
         if (seq != s->ack) {
             if (payload_len > 0 || has_fin) send_control(s, TCP_ACK);
             continue;
         }
-
-        if (payload_len == 0 && !has_fin) continue;
+        
+        if (payload_len == 0 && !has_fin) {
+            continue;
+        }
 
         if (payload_len > 0) {
-            payload[payload_len] = '\0';
-            printf("[*] Server response: %s", payload);
+            payload[payload_len - 1] = '\0';
+            
+            // SERVER -> CLIENT [PSH, ACK] <message> 
+            log_packet(0, recv_tcph.flags, seq, ack, (char *)payload);
 
             if (out_buf && out_buf_size > 0) {
                 strncpy(out_buf, (char *)payload, out_buf_size - 1);
@@ -200,7 +210,6 @@ int tcp_session_recv_message(tcp_session_t *s, char *out_buf,
         send_control(s, TCP_ACK);
 
         if (has_fin) {
-            printf("[*] Server FIN received and acknowledged\n");
             return 1;
         }
 
@@ -208,7 +217,7 @@ int tcp_session_recv_message(tcp_session_t *s, char *out_buf,
         if (((char *)payload)[strlen((char *)payload) - 1] == '\n') return 0;
     }
 
-    printf("[!] Server close timeout\n");
+    printf("[!] Server response timeout\n");
     return 0;
 }
 
@@ -217,15 +226,20 @@ void tcp_session_close(tcp_session_t *s, int timeout_sec)
     tcp_header_t recv_tcph;
     int payload_len;
 
-    printf("[*] Closing connection (FIN+ACK)...\n");
+    // printf("[*] Closing connection (FIN+ACK)...\n");
 
     send_control(s, TCP_FIN | TCP_ACK);
     s->seq++;
 
     wait_for_packet(s, TCP_ACK, TCP_ACK, &recv_tcph, NULL, 0, &payload_len, timeout_sec);
 
+    uint32_t seq = ntohl(recv_tcph.seq_num);
+    uint32_t ack = ntohl(recv_tcph.ack_num);
+
+    log_packet(0, recv_tcph.flags, seq, ack, "");
+
     close_raw_socket(s->sockfd);
-    printf("[*] Done.\n");
+    // printf("[*] Done.\n");
 }
 
 void tcp_session_abort(tcp_session_t *s)

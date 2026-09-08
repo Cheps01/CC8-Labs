@@ -1,7 +1,7 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -g
 TARGET = tcp_client
-OBJS = tcp_client.o tcp_session.o ip_header.o tcp_header.o checksum.o raw_socket.o
+OBJS = tcp_client.o tcp_session.o ip_header.o tcp_header.o checksum.o raw_socket.o tcp_logs.o
 
 UNAME_S := $(shell uname -s)
 ifeq ($(UNAME_S),Darwin)

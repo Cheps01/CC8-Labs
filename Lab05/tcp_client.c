@@ -11,6 +11,7 @@
 
 #include "tcp_client.h"
 #include "tcp_session.h"
+#include "tcp_logs.h"
 
 static const option_t options[] = {
     {"-l", "--local", OPT_LOCAL},
@@ -81,14 +82,20 @@ int run_session(const cli_options_t *o)
     tcp_session_t session;
     char response[TCP_SESSION_MAX_MSG + 1] = {0};
 
+    log_divider("TCP SESSION");
+
     if (tcp_session_open(&session, o->local_ip, o->server_ip, o->server_port, o->interface) != 0)
         return 1;
+
+    log_divider("HANDSHACKE");
 
     if (tcp_session_handshake(&session, 10) != 0) {
         tcp_session_abort(&session);
         return 1;
     }
     
+    log_divider("DATA");
+
     // Ciclo de entrada de usuario
     char message[TCP_SESSION_MAX_MSG + 1];
     while (1) {
@@ -108,7 +115,9 @@ int run_session(const cli_options_t *o)
         while ((c = getchar()) != '\n' && c != EOF);
     }
 
-    tcp_session_close(&session, 5);
+    log_divider("CLOSE");
+    tcp_session_close(&session, 2);
+    log_divider("CONNECTION CLOSED");
     return 0;
 }
 
