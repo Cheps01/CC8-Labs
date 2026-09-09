@@ -100,7 +100,7 @@ int run_session(const cli_options_t *o)
     char message[TCP_SESSION_MAX_MSG + 1];
     while (1) {
 
-        printf("Insertar mensaje \\> ");
+        printf("Insertar mensaje > ");
         scanf("%63[^\n]", (char *)message); 
 
         if (tcp_session_send_message(&session, message) != 0) {

@@ -87,7 +87,7 @@ static int send_control(tcp_session_t *s, uint8_t flags)
     uint8_t packet[MAX_PACKET_SIZE];
     int len = build_packet(packet, s, flags, NULL, 0);
 
-    // CLIENT -> SERVER
+    // CLIENT -> SERVER <flags>
     log_packet(1, flags, s->seq, s->ack, ""); 
 
     return send_packet(s->sockfd, packet, len, s->server_ip);
@@ -171,7 +171,7 @@ int tcp_session_recv_message(tcp_session_t *s, char *out_buf,
     uint8_t payload[TCP_SESSION_MAX_MSG + 1];
     tcp_header_t recv_tcph;
     int payload_len;
-    time_t start = time(NULL);
+    time_t start = time(NULL);  
 
     while (difftime(time(NULL), start) < timeout_sec) {
         if (wait_for_packet(s, TCP_ACK, TCP_ACK, &recv_tcph, payload,
@@ -181,16 +181,20 @@ int tcp_session_recv_message(tcp_session_t *s, char *out_buf,
         uint32_t seq = ntohl(recv_tcph.seq_num);
         uint32_t ack = ntohl(recv_tcph.ack_num);
 
+
         int has_fin = recv_tcph.flags & TCP_FIN;
         
         if (seq != s->ack) {
             if (payload_len > 0 || has_fin) send_control(s, TCP_ACK);
             continue;
         }
-        
+
         if (payload_len == 0 && !has_fin) {
             continue;
         }
+        
+        s->ack += (uint32_t)payload_len;
+        if (has_fin) s->ack++;
 
         if (payload_len > 0) {
             payload[payload_len - 1] = '\0';
@@ -202,19 +206,15 @@ int tcp_session_recv_message(tcp_session_t *s, char *out_buf,
                 strncpy(out_buf, (char *)payload, out_buf_size - 1);
                 out_buf[out_buf_size - 1] = '\0';
             }
+            return 1;
         }
 
-        s->ack += (uint32_t)payload_len;
-        if (has_fin) s->ack++;
 
         send_control(s, TCP_ACK);
 
         if (has_fin) {
             return 1;
         }
-
-        // Verificar final del mensaje (para lectura sin FIN o timeout)
-        if (((char *)payload)[strlen((char *)payload) - 1] == '\n') return 0;
     }
 
     printf("[!] Server response timeout\n");
@@ -239,7 +239,6 @@ void tcp_session_close(tcp_session_t *s, int timeout_sec)
     log_packet(0, recv_tcph.flags, seq, ack, "");
 
     close_raw_socket(s->sockfd);
-    // printf("[*] Done.\n");
 }
 
 void tcp_session_abort(tcp_session_t *s)
