@@ -46,5 +46,5 @@ int receive_packet(int sockfd, uint8_t *buffer, size_t buffer_len, int timeout_m
  * en macOS, también la captura pcap).
  */
 void close_raw_socket(int sockfd);
-
+    
 #endif /* RAW_SOCKET_H */
