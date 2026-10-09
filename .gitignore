@@ -3,3 +3,4 @@ logs
 bin
 out
 *.o
+__pycache__
