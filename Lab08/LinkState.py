@@ -16,7 +16,6 @@ def validations():
     file_path = sys.argv[1]
     if not os.path.exists(file_path): print(f"\n\t> El archivo {file_path} no existe.\n"); sys.exit(1)
 
-
 # Inicio de Programa 
 if __name__ == "__main__":
     validations()
@@ -43,16 +42,4 @@ if __name__ == "__main__":
     ] ##### Puedes implementar tu propia estructura.
 
     # Imprime los Pasos generados del Algoritmo
-    show.stepsCalculatingRoute(initNode, routeDict, stepsCalcs)
-
-
-
-
-
-
-
-
-
-
-
-
+    # show.stepsCalculatingRoute(initNode, routeDict, stepsCalcs)

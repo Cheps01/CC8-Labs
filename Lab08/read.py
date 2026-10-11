@@ -31,14 +31,3 @@ def routingFile(file_path):
 
     # Retorno: nodo inicial y la estructura
     return initNode, routeDict
-
-
-
-
-
-
-
-
-
-
-
