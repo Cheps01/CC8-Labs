@@ -100,12 +100,6 @@ Asegúrate de que la versión sea 3.x.x para garantizar la compatibilidad del c�
 
 El código entregado en el laboratorio incluye varias validaciones, entre ellas, una para comprobar la versión de Python.
 
+## Vídeo de Demostración
 
-
-
-
-
-
-
-
-
+Link: https://drive.google.com/file/d/1S6K-7kcEq3i2ouwGxB5CX3zP59WpwYee/view?usp=sharing
