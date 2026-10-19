@@ -6,25 +6,25 @@ int main(int argc, char **argv) {
         return 1;
     }
  
-    conn_t c;
-    memset(&c, 0, sizeof c);
-    if (inet_pton(AF_INET, argv[1], &c.dst_ip) != 1) {
+    conn_t cnt;
+    memset(&cnt, 0, sizeof cnt);
+    if (inet_pton(AF_INET, argv[1], &cnt.dst_ip) != 1) {
         fprintf(stderr, "IP invalida\n");
         return 1;
     }
-    c.dport = (uint16_t)atoi(argv[2]);
+    cnt.dport = (uint16_t)atoi(argv[2]);
  
     srand((unsigned)time(NULL) ^ (unsigned)getpid());
-    c.sport = (uint16_t)(40000 + rand() % 20000);
-    uint32_t isn = ((uint32_t)rand() << 16) ^ (uint32_t)rand(); /* tu numero de secuencia inicial */
+    cnt.sport = (uint16_t)(40000 + rand() % 20000);
+    uint32_t isn = ((uint32_t)rand() << 16) ^ (uint32_t)rand(); // numero de secuencia inicial
  
-    if (local_ip_for(c.dst_ip, &c.src_ip) < 0) {
-        perror("local_ip_for");
+    if (local_ip_for(cnt.dst_ip, &cnt.src_ip) < 0) {
+        perror("[local_ip_for] couldn't resolve ip");
         return 1;
     }
-    c.sock = socket(AF_INET, SOCK_RAW, IPPROTO_TCP);
-    if (c.sock < 0) {
-        perror("socket (necesitas root)");
+    cnt.sock = socket(AF_INET, SOCK_RAW, IPPROTO_TCP);
+    if (cnt.sock < 0) {
+        perror("[socket] root privileges needed");
         return 1;
     }
  
@@ -55,6 +55,6 @@ int main(int argc, char **argv) {
     /* TODO 4 - Imprimir latencia, RTT promedio de los 10 envios y la velocidad:
      *          (bytes * 8) / (2 * rtt_promedio)   segun la formula del enunciado. */
  
-    close(c.sock);
+    close(cnt.sock);
     return 0;
 }

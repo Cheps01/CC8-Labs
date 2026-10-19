@@ -9,7 +9,7 @@ static int64_t now_us(void) {
     return (int64_t)ts.tv_sec * 1000000 + ts.tv_nsec / 1000;
 }
  
-/* Checksum de Internet (complemento a uno de 16 bits). Asume CPU little-endian. */
+// Checksum de Internet
 static uint16_t csum16(const void *data, size_t len) {
     const uint8_t *p = data;
     uint32_t sum = 0;
@@ -30,7 +30,7 @@ static uint16_t csum16(const void *data, size_t len) {
     return (uint16_t)~sum;
 }
  
-/* Checksum TCP: pseudo-encabezado (src, dst, 0, proto, longitud TCP) + segmento. */
+// Checksum TCP
 static uint16_t tcp_checksum(struct in_addr src, struct in_addr dst,
                              const void *seg, size_t seg_len) {
     struct __attribute__((packed)) {
@@ -45,8 +45,8 @@ static uint16_t tcp_checksum(struct in_addr src, struct in_addr dst,
     return csum16(buf, sizeof ph + seg_len);
 }
  
-/* Descubre que IP local usaria el kernel para llegar a dst (truco: connect UDP). */
-static int local_ip_for(struct in_addr dst, struct in_addr *out) {
+// Descubre que IP local usaria el kernel para llegar a dst
+int local_ip_for(struct in_addr dst, struct in_addr *out) {
     int s = socket(AF_INET, SOCK_DGRAM, 0);
     if (s < 0)
         return -1;
@@ -67,11 +67,11 @@ static int local_ip_for(struct in_addr dst, struct in_addr *out) {
 }
  
 // ---------------------------------
-//        ENVIO DE SEGMENTOS
+//  ENVIO Y RECEPCIÓN DE SEGMENTOS
 // ---------------------------------
 
 // Envia un segmento TCP. Devuelve 0 si ok, -1 si error.
-static int send_segment(conn_t *c, uint32_t seq, uint32_t ack, uint8_t flags,
+int send_segment(conn_t *c, uint32_t seq, uint32_t ack, uint8_t flags,
                         const void *data, size_t len) {
     uint8_t buf[MAX_PKT] __attribute__((aligned(4)));
     size_t hlen = sizeof(struct tcphdr);
@@ -92,13 +92,13 @@ static int send_segment(conn_t *c, uint32_t seq, uint32_t ack, uint8_t flags,
     th->th_sum = 0;
     th->th_sum = tcp_checksum(c->src_ip, c->dst_ip, buf, hlen + len);
  
-    struct sockaddr_in to = {.sin_family = AF_INET, .sin_addr = c->dst_ip}; /* puerto ignorado */
+    struct sockaddr_in to = {.sin_family = AF_INET, .sin_addr = c->dst_ip};
     ssize_t n = sendto(c->sock, buf, hlen + len, 0, (struct sockaddr *)&to, sizeof to);
     return n == (ssize_t)(hlen + len) ? 0 : -1;
 }
  
 // Espera un segmento del servidor dirigido a nuestro puerto. Devuelve 0 si ok, -1 por timeout o error.
-static int wait_for(conn_t *c, uint8_t need, struct tcphdr *hdr,
+int wait_for(conn_t *c, uint8_t need, struct tcphdr *hdr,
                     const uint8_t **payload, size_t *plen, int64_t *t_us) {
     static uint8_t rbuf[MAX_PKT] __attribute__((aligned(4)));
     int64_t deadline = now_us() + (int64_t)WAIT_MS * 1000;
