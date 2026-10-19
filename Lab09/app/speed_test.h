@@ -31,6 +31,7 @@ typedef struct {
     uint16_t sport, dport;
 } conn_t;
 
+int64_t now_us(void);
 int local_ip_for(struct in_addr dst, struct in_addr *out);
 int send_segment(conn_t *c, uint32_t seq, uint32_t ack, uint8_t flags,
                         const void *data, size_t len);
