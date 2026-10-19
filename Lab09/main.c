@@ -1,60 +1,130 @@
 #include "speed_test.h"
 
+#define N_ENVIOS 10
+#define TAM 1000
+
+// Cálculo de latencia
+static double latency_ms(const char *ip) {
+    char cmd[128], line[256];
+    double avg = -1.0;
+
+    snprintf(cmd, sizeof cmd, "ping -c 4 -q %s 2>/dev/null", ip);
+    FILE *fp = popen(cmd, "r");
+    if (!fp)
+        return avg;
+    while (fgets(line, sizeof line, fp)) {
+        /* línea típica: rtt min/avg/max/mdev = 0.045/0.052/0.061/0.007 ms */
+        char *eq = strchr(line, '=');
+        if (strstr(line, "min/avg/max") && eq) {
+            double mn, av, mx;
+            if (sscanf(eq + 1, " %lf/%lf/%lf", &mn, &av, &mx) == 3)
+                avg = av;
+        }
+    }
+    pclose(fp);
+    return avg;
+}
+
 int main(int argc, char **argv) {
     if (argc != 3) {
         fprintf(stderr, "Uso: %s <ip_servidor> <puerto>\n", argv[0]);
         return 1;
     }
- 
-    conn_t cnt;
-    memset(&cnt, 0, sizeof cnt);
-    if (inet_pton(AF_INET, argv[1], &cnt.dst_ip) != 1) {
+
+    conn_t c;
+    memset(&c, 0, sizeof c);
+    if (inet_pton(AF_INET, argv[1], &c.dst_ip) != 1) {
         fprintf(stderr, "IP invalida\n");
         return 1;
     }
-    cnt.dport = (uint16_t)atoi(argv[2]);
- 
+    c.dport = (uint16_t)atoi(argv[2]);
+
     srand((unsigned)time(NULL) ^ (unsigned)getpid());
-    cnt.sport = (uint16_t)(40000 + rand() % 20000);
-    uint32_t isn = ((uint32_t)rand() << 16) ^ (uint32_t)rand(); // numero de secuencia inicial
- 
-    if (local_ip_for(cnt.dst_ip, &cnt.src_ip) < 0) {
-        perror("[local_ip_for] couldn't resolve ip");
+    c.sport = (uint16_t)(40000 + rand() % 20000);
+    uint32_t isn = ((uint32_t)rand() << 16) ^ (uint32_t)rand();
+
+    if (local_ip_for(c.dst_ip, &c.src_ip) < 0) {
+        perror("local_ip_for");
         return 1;
     }
-    cnt.sock = socket(AF_INET, SOCK_RAW, IPPROTO_TCP);
-    if (cnt.sock < 0) {
-        perror("[socket] root privileges needed");
+    c.sock = socket(AF_INET, SOCK_RAW, IPPROTO_TCP);
+    if (c.sock < 0) {
+        perror("socket (necesitas root)");
         return 1;
     }
- 
-    /* Evita warnings mientras las funciones aun no se usan. Borra esto luego. */
-    (void)send_segment;
-    (void)wait_for;
-    (void)isn;
- 
-    /* TODO 0 - Latencia: ping al servidor (Net::Ping, o ejecutar `ping -c` y
-     *          parsear la salida) y guardar el promedio en ms. */
- 
-    /* TODO 1 - Handshake de 3 vias.
-     *   a) send_segment SYN con seq = isn
-     *   b) wait_for(SYN|ACK) y guarda el seq del servidor (ntohl(hdr.th_seq))
-     *   c) send_segment ACK con seq = isn + 1, ack = seq_servidor + 1
-     *   (SYN y FIN consumen 1 numero de secuencia; los datos consumen `len`)
-     */
- 
-    /* TODO 2 - 10 envios de 1 KB sobre la MISMA conexion.
-     *   Por cada uno: t0 = now_us(); send_segment con PSH|ACK y los datos;
-     *   wait_for(ACK) y verifica que su ack == tu seq + len; rtt = t_recv - t0.
-     *   Avanza tu seq en len. Guarda los 10 RTT en un arreglo.
-     */
- 
-    /* TODO 3 - Cierre: send_segment FIN|ACK, wait_for el ACK/FIN del servidor,
-     *          y responde con el ACK final si hace falta. */
- 
-    /* TODO 4 - Imprimir latencia, RTT promedio de los 10 envios y la velocidad:
-     *          (bytes * 8) / (2 * rtt_promedio)   segun la formula del enunciado. */
- 
-    close(cnt.sock);
+
+    // Calcular latencia
+    double latencia_ms = latency_ms(argv[1]);
+
+    // Handshake 
+    struct tcphdr h;
+    const uint8_t *pl;
+    size_t plen;
+    int64_t t;
+
+    if (send_segment(&c, isn, 0, F_SYN, NULL, 0) < 0) {
+        perror("enviar SYN");
+        return 1;
+    }
+    if (wait_for(&c, F_SYN | F_ACK, &h, &pl, &plen, &t) < 0) {
+        fprintf(stderr, "No llegó el SYN-ACK\n");
+        return 1;
+    }
+    uint32_t my_seq = isn + 1;
+    uint32_t my_ack = ntohl(h.th_seq) + 1;
+    if (send_segment(&c, my_seq, my_ack, F_ACK, NULL, 0) < 0) {
+        perror("enviar ACK");
+        return 1;
+    }
+
+    // 10 envíos de 1 KB bajo la misma conexión
+    uint8_t datos[TAM];
+    memset(datos, 'A', sizeof datos); /* o cargar aquí el archivo de 1 KB con fread */
+
+    double suma_s = 0.0;
+    for (int i = 0; i < N_ENVIOS; i++) {
+        int64_t t0 = now_us();
+        if (send_segment(&c, my_seq, my_ack, F_PSH | F_ACK, datos, TAM) < 0) {
+            perror("enviar datos");
+            return 1;
+        }
+
+        /* esperar el ACK que confirma TODO lo enviado (my_seq + TAM) */
+        int ok = 0;
+        while (wait_for(&c, F_ACK, &h, &pl, &plen, &t) == 0) {
+            if (ntohl(h.th_ack) == my_seq + TAM) {
+                ok = 1;
+                break;
+            }
+        }
+        if (!ok) {
+            fprintf(stderr, "Sin ACK para el envío %d\n", i + 1);
+            return 1;
+        }
+
+        double rtt_s = (double)(t - t0) / 1e6;
+        printf("Envío %2d: RTT = %.3f ms\n", i + 1, rtt_s * 1000.0);
+        suma_s += rtt_s;
+        my_seq += TAM;
+    }
+
+    // Cierre conexion
+    send_segment(&c, my_seq, my_ack, F_FIN | F_ACK, NULL, 0);
+    my_seq += 1; /* el FIN consume 1 */
+    if (wait_for(&c, F_ACK, &h, &pl, &plen, &t) == 0) {
+        if (!(h.th_flags & F_FIN))
+            wait_for(&c, F_FIN, &h, &pl, &plen, &t); /* el FIN puede venir aparte */
+        if (h.th_flags & F_FIN)
+            send_segment(&c, my_seq, ntohl(h.th_seq) + 1, F_ACK, NULL, 0);
+    }
+    close(c.sock);
+
+    // Resultados
+    double rtt_prom_s = suma_s / N_ENVIOS;
+    double kbps = ((double)TAM * 8.0) / (2.0 * rtt_prom_s) / 1000.0;
+
+    printf("\nLatencia (ping, promedio): %.3f ms\n", latencia_ms);
+    printf("RTT promedio de %d envíos: %.3f ms\n", N_ENVIOS, rtt_prom_s * 1000.0);
+    printf("Velocidad de subida: %.2f Kbps\n", kbps);
     return 0;
 }
